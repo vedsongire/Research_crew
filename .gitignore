@@ -1,0 +1,28 @@
+# Environment variables and confidential keys
+.env
+.env.*
+!.env.example
+env/
+*.env
+
+# Python virtual environment & interpreter artifacts
+.venv/
+venv/
+ENV/
+env.bak/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE & Editor configurations
+.vscode/
+.idea/
+
+# Testing & Coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Operating system files
+.DS_Store
+Thumbs.db
