@@ -51,12 +51,30 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "env", ".env"))
 # Uses the Groq API key (MY_API_KEY) configured in your .env file.
 api_key = os.getenv("MY_API_KEY") or os.getenv("GROQ_API_KEY")
 
+def _resolve_crewai_model(raw_name: str) -> str:
+    """
+    Resolves the model string for CrewAI's OpenAI-compatible provider.
+    
+    CrewAI splits the model string on the first '/' to detect the provider (e.g. 'openai').
+    Models on Groq whose names start with 'openai/' (like 'openai/gpt-oss-120b') need to be
+    passed as 'openai/openai/gpt-oss-120b' so CrewAI routes to its OpenAI client while
+    forwarding the exact model identifier 'openai/gpt-oss-120b' to Groq.
+    """
+    raw = raw_name.strip()
+    if raw.startswith("openai/"):
+        return f"openai/{raw}"
+    elif "/" not in raw:
+        return f"openai/{raw}"
+    return f"openai/{raw}"
+
+
 if api_key:
+    configured_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
     llm = LLM(
-        model=os.getenv("GROQ_MODEL", "openai/qwen/qwen3.8-27b"),
+        model=_resolve_crewai_model(configured_model),
         base_url="https://api.groq.com/openai/v1",
         api_key=api_key.strip(),
-        max_tokens=850,
+        max_tokens=int(os.getenv("MAX_TOKENS", "2500")),
         timeout=120,
     )
 else:

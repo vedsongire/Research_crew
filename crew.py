@@ -48,67 +48,75 @@ if isinstance(sys.stderr, io.TextIOWrapper) and sys.stderr.encoding != "utf-8":
 # Task 1: Web Research Task
 # Assigned to: researcher
 # Does NOT use context because it is the initial root task that discovers raw external data.
-research_task = Task(
-    description=(
-        "Conduct thorough web research on the topic: '{topic}'.\n"
-        "Use the search tool to find:\n"
-        "1. Current industry trends and key market statistics.\n"
-        "2. Concrete benefits and real-world advantages.\n"
-        "3. Core challenges, limitations, or adoption barriers.\n"
-        "4. Real-world company case studies or practical implementations.\n"
-        "CRITICAL REQUIREMENT: For every major finding, retain the exact source URL from the search results."
-    ),
-    expected_output=(
-        "A structured raw research brief containing detailed findings, specific statistics, "
-        "case study examples, and an explicit list of cited source URLs."
-    ),
-    agent=researcher,
-)
+def create_research_tasks():
+    """
+    Factory function that creates fresh Task instances for the Research Crew.
 
-# Task 2: Analysis & Synthesis Task
-# Assigned to: analyst
-# Chained with `context=[research_task]` so it receives the researcher's output directly.
-analysis_task = Task(
-    description=(
-        "Carefully analyze the raw research notes provided on '{topic}'.\n"
-        "Your objectives:\n"
-        "1. Filter out redundant noise and identify the most significant underlying patterns.\n"
-        "2. Break down findings into categorized thematic pillars (e.g., operational impact, economic ROI, tech hurdles).\n"
-        "3. Evaluate the trade-offs: compare the promised benefits against practical implementation challenges.\n"
-        "4. Preserve all relevant statistics, case study details, and source URLs provided by the researcher."
-    ),
-    expected_output=(
-        "A structured analytical briefing featuring categorized thematic insights, a balanced "
-        "pros/cons evaluation, distilled key metrics, and preserved source URLs."
-    ),
-    agent=analyst,
-    context=[research_task],
-)
+    WHY A FACTORY INSTEAD OF STATIC SINGLETONS?
+    In a REST API environment (FastAPI), multiple requests may arrive sequentially or concurrently.
+    CrewAI tasks mutate during execution (storing outputs and execution metadata). Creating fresh
+    Task instances for each execution prevents state leakage and cache pollution across requests.
+    """
+    t1 = Task(
+        description=(
+            "Conduct thorough web research on the topic: '{topic}'.\n"
+            "Use the search tool to find:\n"
+            "1. Current industry trends and key market statistics.\n"
+            "2. Concrete benefits and real-world advantages.\n"
+            "3. Core challenges, limitations, or adoption barriers.\n"
+            "4. Real-world company case studies or practical implementations.\n"
+            "CRITICAL REQUIREMENT: For every major finding, retain the exact source URL from the search results."
+        ),
+        expected_output=(
+            "A structured raw research brief containing detailed findings, specific statistics, "
+            "case study examples, and an explicit list of cited source URLs."
+        ),
+        agent=researcher,
+    )
 
-# Task 3: Executive Report Writing Task
-# Assigned to: writer
-# Chained with `context=[analysis_task]` (and receives research data through it)
-# to produce the final comprehensive report.
-writing_task = Task(
-    description=(
-        "Review the structured analysis and research on '{topic}'.\n"
-        "Draft a polished, comprehensive, publication-ready executive report formatted in clean Markdown.\n"
-        "The report MUST include:\n"
-        "- Title and Executive Summary (high-level synthesis of findings).\n"
-        "- Market Overview & Current Trends (with specific statistics).\n"
-        "- Key Benefits & Strategic Advantages.\n"
-        "- Implementation Challenges & Risk Factors.\n"
-        "- Real-World Case Studies / Industry Examples.\n"
-        "- Future Outlook & Strategic Recommendations.\n"
-        "- References / Sources Section listing all cited URLs."
-    ),
-    expected_output=(
-        "A comprehensive, beautifully formatted Markdown executive research report with clear headings, "
-        "bullet points, numerical data, strategic takeaways, and a complete cited sources section."
-    ),
-    agent=writer,
-    context=[analysis_task],
-)
+    t2 = Task(
+        description=(
+            "Carefully analyze the raw research notes provided on '{topic}'.\n"
+            "Your objectives:\n"
+            "1. Filter out redundant noise and identify the most significant underlying patterns.\n"
+            "2. Break down findings into categorized thematic pillars (e.g., operational impact, economic ROI, tech hurdles).\n"
+            "3. Evaluate the trade-offs: compare the promised benefits against practical implementation challenges.\n"
+            "4. Preserve all relevant statistics, case study details, and source URLs provided by the researcher."
+        ),
+        expected_output=(
+            "A structured analytical briefing featuring categorized thematic insights, a balanced "
+            "pros/cons evaluation, distilled key metrics, and preserved source URLs."
+        ),
+        agent=analyst,
+        context=[t1],
+    )
+
+    t3 = Task(
+        description=(
+            "Review the structured analysis and research on '{topic}'.\n"
+            "Draft a polished, comprehensive, publication-ready executive report formatted in clean Markdown.\n"
+            "The report MUST include:\n"
+            "- Title and Executive Summary (high-level synthesis of findings).\n"
+            "- Market Overview & Current Trends (with specific statistics).\n"
+            "- Key Benefits & Strategic Advantages.\n"
+            "- Implementation Challenges & Risk Factors.\n"
+            "- Real-World Case Studies / Industry Examples.\n"
+            "- Future Outlook & Strategic Recommendations.\n"
+            "- References / Sources Section listing all cited URLs."
+        ),
+        expected_output=(
+            "A comprehensive, beautifully formatted Markdown executive research report with clear headings, "
+            "bullet points, numerical data, strategic takeaways, and a complete cited sources section."
+        ),
+        agent=writer,
+        context=[t2],
+    )
+
+    return t1, t2, t3
+
+
+# Default singleton tasks for module-level access and backwards compatibility
+research_task, analysis_task, writing_task = create_research_tasks()
 
 
 # ------------------------------------------------------------------------------
@@ -133,14 +141,25 @@ writing_task = Task(
 
 def create_research_crew() -> Crew:
     """
-    Factory function to assemble and return the Research Crew.
+    Factory function to assemble and return a fresh Research Crew instance.
+    Generates new tasks per run to avoid cross-request state contamination.
     """
+    tasks = list(create_research_tasks())
     return Crew(
         agents=[researcher, analyst, writer],
-        tasks=[research_task, analysis_task, writing_task],
+        tasks=tasks,
         process=Process.sequential,
         verbose=True,
     )
+
+
+def run_research(topic: str) -> str:
+    """
+    Convenience function to kickoff the crew for a given topic and return the report text.
+    """
+    crew = create_research_crew()
+    result = crew.kickoff(inputs={"topic": topic})
+    return str(result)
 
 
 # ------------------------------------------------------------------------------
