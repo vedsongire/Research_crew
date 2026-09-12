@@ -19,13 +19,16 @@ WHY REST / FASTAPI?
 
 import os
 import re
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from crew import run_research
+from pdf_export import markdown_report_to_pdf
 
 
 # ------------------------------------------------------------------------------
@@ -68,12 +71,76 @@ class ResearchResponse(BaseModel):
     topic: str = Field(..., description="The validated research topic investigated.")
     filename: str = Field(..., description="Name of the timestamped markdown report saved.")
     saved_path: str = Field(..., description="Relative workspace path where the report is stored.")
+    pdf_path: str = Field(..., description="Relative workspace path where the matching PDF report is stored.")
     report: str = Field(..., description="The complete final Markdown report produced by the Writer agent.")
 
 
 # ------------------------------------------------------------------------------
 # 3. HELPER FUNCTIONS
 # ------------------------------------------------------------------------------
+def clean_report_text(text: str) -> str:
+    """
+    Normalizes research output text to clean, standard ASCII characters.
+    Eliminates strange typographic artifacts (e.g. non-breaking hyphens, narrow spaces,
+    special dashes, curly quotes) that cause spurious question marks ('?') or corrupted formatting
+    in PDF export, saved markdown files, and JSON API responses.
+    """
+    if not text:
+        return ""
+
+    char_map = {
+        # Non-breaking hyphens and special dashes -> standard ASCII hyphen
+        "\u2010": "-",  # Hyphen
+        "\u2011": "-",  # Non-breaking hyphen
+        "\u2012": "-",  # Figure dash
+        "\u2013": "-",  # En dash
+        "\u2014": "--", # Em dash
+        "\u2015": "--", # Horizontal bar
+        "\u2212": "-",  # Minus sign
+        # Unicode spaces -> standard ASCII space
+        "\u00a0": " ",  # Non-breaking space
+        "\u202f": " ",  # Narrow no-break space
+        "\u2009": " ",  # Thin space
+        "\u200a": " ",  # Hair space
+        "\u200b": "",   # Zero-width space
+        "\u200c": "",   # Zero-width non-joiner
+        "\u200d": "",   # Zero-width joiner
+        "\ufeff": "",   # Byte order mark
+        # Quotes -> standard ASCII quotes
+        "\u2018": "'",  # Left single quote
+        "\u2019": "'",  # Right single quote
+        "\u201a": "'",  # Single low-9 quote
+        "\u201b": "'",  # Single high-reversed-9 quote
+        "\u201c": '"',  # Left double quote
+        "\u201d": '"',  # Right double quote
+        "\u201e": '"',  # Double low-9 quote
+        "\u201f": '"',  # Double high-reversed-9 quote
+        "\u00ab": '"',  # Left angle quote
+        "\u00bb": '"',  # Right angle quote
+        # Mathematical / typographical symbols
+        "\u2248": "~",   # Almost equal to / approximately
+        "\u00b1": "+/-", # Plus-minus
+        "\u00d7": "x",   # Multiplication sign
+        "\u00f7": "/",   # Division sign
+        # Ellipsis and bullets
+        "\u2026": "...",
+        "\u2022": "-",
+        "\u25cf": "-",
+        "\u25cb": "-",
+        "\u25aa": "-",
+        "\u25ab": "-",
+    }
+    for char, replacement in char_map.items():
+        text = text.replace(char, replacement)
+
+    # Decompose any remaining unicode accents / symbols to nearest ASCII equivalent
+    text = unicodedata.normalize("NFKD", text)
+    # Convert safely to ASCII, dropping any remaining invalid byte sequences without producing '?'
+    text = text.encode("ascii", errors="ignore").decode("ascii")
+
+    return text
+
+
 def save_report_to_disk(topic: str, content: str) -> tuple[str, str]:
     """
     Saves the generated report to outputs/ with a timestamped and sanitized filename.
@@ -120,17 +187,15 @@ def create_research_report(payload: ResearchRequest) -> ResearchResponse:
     Initiate the full research crew workflow for a given topic:
     1. Validates the input topic (returns HTTP 400 if empty or whitespace).
     2. Kicks off the sequential crew (Researcher -> Analyst -> Writer).
-    3. Saves the final report to disk in the `outputs/` folder.
-    4. Returns the report content and file location as JSON.
+    3. Normalizes text formatting to eliminate encoding artifacts ('?' marks).
+    4. Saves the final report to disk in the `outputs/` folder (.md and .pdf).
+    5. Returns the report content and file locations as JSON.
     """
     # --------------------------------------------------------------------------
     # INPUT VALIDATION (Error Handling for empty/whitespace topics)
     # --------------------------------------------------------------------------
     clean_topic = payload.topic.strip()
     if not clean_topic:
-        # WHY 400 BAD REQUEST?
-        # A 400 error cleanly tells the client that their request was understood by the
-        # server, but the provided payload is semantically invalid for processing.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -143,7 +208,7 @@ def create_research_report(payload: ResearchRequest) -> ResearchResponse:
     # PIPELINE EXECUTION
     # --------------------------------------------------------------------------
     try:
-        report_content = run_research(clean_topic)
+        raw_report = run_research(clean_topic)
     except Exception as e:
         # Catch unexpected pipeline failures (e.g. LLM API quota errors, networking issues)
         # and surface a clear 500 error instead of silently crashing the process.
@@ -153,16 +218,60 @@ def create_research_report(payload: ResearchRequest) -> ResearchResponse:
         )
 
     # --------------------------------------------------------------------------
+    # CLEANING & NORMALIZATION (Prevents '?' artifacts in PDF & JSON)
+    # --------------------------------------------------------------------------
+    report_content = clean_report_text(raw_report)
+    sanitized_topic = clean_report_text(clean_topic)
+
+    # --------------------------------------------------------------------------
     # PERSISTENCE & RESPONSE
     # --------------------------------------------------------------------------
-    filename, saved_path = save_report_to_disk(clean_topic, report_content)
+    filename, saved_path = save_report_to_disk(sanitized_topic, report_content)
+
+    # Generate matching PDF report in outputs/
+    pdf_filename = filename[:-3] + ".pdf" if filename.endswith(".md") else f"{filename}.pdf"
+    pdf_filepath = os.path.join(OUTPUTS_DIR, pdf_filename)
+    markdown_report_to_pdf(report_content, sanitized_topic, pdf_filepath)
+    pdf_path = os.path.relpath(pdf_filepath, BASE_DIR)
 
     return ResearchResponse(
         status="success",
-        topic=clean_topic,
+        topic=sanitized_topic,
         filename=filename,
         saved_path=saved_path,
+        pdf_path=pdf_path,
         report=report_content,
+    )
+
+
+@app.get(
+    "/research/{filename}/pdf",
+    tags=["Research"],
+    summary="Download or View PDF Research Report",
+    response_class=FileResponse,
+)
+def get_pdf_report(filename: str) -> FileResponse:
+    """
+    Returns the generated PDF research report directly as a downloadable or viewable file.
+    Accepts filename with .pdf, .md, or without extension.
+    """
+    safe_name = os.path.basename(filename)
+    if safe_name.endswith(".md"):
+        safe_name = safe_name[:-3] + ".pdf"
+    elif not safe_name.endswith(".pdf"):
+        safe_name = safe_name + ".pdf"
+
+    pdf_filepath = os.path.join(OUTPUTS_DIR, safe_name)
+    if not os.path.isfile(pdf_filepath):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"PDF report '{safe_name}' not found in outputs directory.",
+        )
+
+    return FileResponse(
+        path=pdf_filepath,
+        media_type="application/pdf",
+        filename=safe_name,
     )
 
 

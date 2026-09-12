@@ -94,19 +94,28 @@ def create_research_tasks():
     t3 = Task(
         description=(
             "Review the structured analysis and research on '{topic}'.\n"
-            "Draft a polished, comprehensive, publication-ready executive report formatted in clean Markdown.\n"
-            "The report MUST include:\n"
-            "- Title and Executive Summary (high-level synthesis of findings).\n"
-            "- Market Overview & Current Trends (with specific statistics).\n"
-            "- Key Benefits & Strategic Advantages.\n"
-            "- Implementation Challenges & Risk Factors.\n"
-            "- Real-World Case Studies / Industry Examples.\n"
-            "- Future Outlook & Strategic Recommendations.\n"
-            "- References / Sources Section listing all cited URLs."
+            "Draft a polished, comprehensive, publication-ready executive report formatted in clean Markdown.\n\n"
+            "The report MUST include ALL of the following sections in order without stopping or truncating prematurely:\n"
+            "1. Title and Executive Summary (high-level synthesis of findings).\n"
+            "2. Market Overview & Current Trends (with specific statistics and structured table).\n"
+            "3. Key Benefits & Strategic Advantages.\n"
+            "4. Implementation Challenges & Risk Factors.\n"
+            "5. Real-World Case Studies / Industry Examples.\n"
+            "6. Future Outlook & Strategic Recommendations (forward-looking roadmap and key takeaways).\n"
+            "7. References / Sources Section (explicit list of all cited URLs and reports).\n\n"
+            "CRITICAL COMPLETION REQUIREMENT:\n"
+            "- You must pace your writing so that every single section is fully drafted from start to finish.\n"
+            "- Sections 6 (Future Outlook & Strategic Recommendations) and 7 (References / Sources) are MANDATORY "
+            "and must never be cut off, abbreviated, or omitted.\n\n"
+            "FORMATTING & ENCODING RULES:\n"
+            "- Use clean, standard ASCII characters only (standard hyphens '-' for lists and compound words, "
+            "standard quotes ' \"', and regular spaces).\n"
+            "- Do NOT use non-breaking hyphens, special unicode minus signs, or narrow/non-breaking spaces that "
+            "corrupt formatting."
         ),
         expected_output=(
-            "A comprehensive, beautifully formatted Markdown executive research report with clear headings, "
-            "bullet points, numerical data, strategic takeaways, and a complete cited sources section."
+            "A complete, fully finished Markdown executive research report containing all 7 numbered sections "
+            "including the Future Outlook and References sections, formatted cleanly with standard ASCII punctuation."
         ),
         agent=writer,
         context=[t2],
