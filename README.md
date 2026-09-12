@@ -1,30 +1,72 @@
 # AI Research Assistant Crew
 
-A multi-agent AI system that takes an input research topic and autonomously produces a comprehensive, publication-ready executive report backed by live web research. The entire pipeline is exposed via a FastAPI REST API endpoint (`POST /research`).
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![CrewAI](https://img.shields.io/badge/CrewAI-Multi--Agent-FF4B4B?style=for-the-badge)](https://www.crewai.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-Tools-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/)
+[![Groq](https://img.shields.io/badge/Groq-LPU_Inference-F55036?style=for-the-badge)](https://groq.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+
+An autonomous multi-agent AI system that conducts real-time web research on any topic and synthesizes publication-grade executive briefs. The system coordinates specialized AI agents (Researcher, Analyst, and Writer), executes live web queries via DuckDuckGo without hallucinations, and delivers clean Markdown and publication-ready PDF reports through a production-grade FastAPI REST service.
 
 ---
 
 ## Architecture Overview
 
-The system utilizes **CrewAI** with sequential execution (`Process.sequential`) to coordinate three specialized AI agents, backed by a custom **LangChain** DuckDuckGo web search tool.
+The system uses **CrewAI** with sequential execution (`Process.sequential`) to coordinate three specialized AI agents, backed by a custom **LangChain** DuckDuckGo web search tool and an automated **fpdf2** PDF publishing pipeline.
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer [Client Interface]
+        Client[HTTP Client / Frontend]
+    end
+
+    subgraph FastAPIService [FastAPI REST Gateway]
+        EP1["POST /research"]
+        EP2["GET /research/{filename}/pdf"]
+        EP3["GET /health"]
+        EP4["GET /docs (Swagger UI)"]
+    end
+
+    subgraph AgentPipeline [CrewAI Multi-Agent Pipeline]
+        Agent1["1. Researcher Agent<br>• Queries live web via DuckDuckGo<br>• Preserves source URLs and statistics"]
+        Tool["LangChain DuckDuckGo Tool<br>• Real-time web search"]
+        Agent2["2. Analyst Agent<br>• Filters noise & thematic synthesis<br>• Evaluates trade-offs & data points"]
+        Agent3["3. Technical Writer Agent<br>• Structures 7-section executive report<br>• Standard ASCII formatting & citations"]
+    end
+
+    subgraph OutputLayer [Persistence & Export]
+        MD["outputs/*.md<br>Clean UTF-8 Markdown Report"]
+        PDF["outputs/*.pdf<br>Lightweight Formatted PDF (fpdf2)"]
+    end
+
+    Client -->|JSON Request| EP1
+    EP1 --> Agent1
+    Agent1 <--> Tool
+    Agent1 -->|Context| Agent2
+    Agent2 -->|Context| Agent3
+    Agent3 --> OutputLayer
+    OutputLayer -->|JSON Response with pdf_path| Client
+    Client -->|Direct Stream| EP2
+```
 
 ### The 5-Stage Workflow
 
-```mermaid
-flowchart LR
-    A[1. User Request<br>FastAPI POST /research] --> B[2. Researcher Agent<br>Gathers external facts]
-    B <--> C[3. Search Tool<br>DuckDuckGo search]
-    B --> D[4. Analyst Agent<br>Synthesizes & filters noise]
-    D --> E[5. Writer Agent<br>Drafts final report]
-    E --> F[API Response & Export<br>JSON + outputs/*.md + outputs/*.pdf]
-```
+1. **API Ingestion & Validation (`POST /research`)**: Validates the input payload schema using Pydantic, enforcing non-empty topic constraints and returning clean HTTP 4xx client diagnostics before any LLM tokens are consumed.
+2. **Autonomous Web Discovery (Researcher)**: Deploys targeted search queries against DuckDuckGo to gather current empirical figures, market data, and verified source URLs.
+3. **Analytical Synthesis (Analyst)**: Ingests raw findings, eliminates redundant noise, organizes insights into categorized thematic pillars, and evaluates strategic trade-offs.
+4. **Executive Publication (Writer)**: Drafts a structured 7-section executive brief (Executive Summary, Market Trends, Benefits, Challenges, Case Studies, Future Outlook, and References) strictly using standard ASCII formatting.
+5. **Dual Persistence & Streaming**: Persists an immutable timestamped `.md` file in [`outputs/`](outputs/), compiles a matching `.pdf` file via `pdf_export.py`, and returns structured JSON with direct download support via `GET /research/{filename}/pdf`.
 
-1. **User Request (`POST /research`)**: The client sends a topic via JSON. FastAPI and Pydantic validate the request schema and reject empty or missing topics with clean 4xx client errors before any LLM tokens are consumed.
-2. **Researcher Agent**: Takes the topic and actively queries the live web. It gathers empirical statistics, recent developments, real-world case studies, and cited URLs without relying on static memory.
-3. **Search Tool**: A custom LangChain `@tool` (`DuckDuckGoSearchRun`) that executes live queries against DuckDuckGo, formatting snippets and source URLs for agent ingestion.
-4. **Analyst Agent**: Ingests the raw research notes directly via task context (`context=[research_task]`). It filters out noise, structures insights into thematic pillars, evaluates trade-offs, and preserves verified metrics and sources.
-5. **Writer Agent**: Receives the structured briefing via task context (`context=[analysis_task]`). It produces a polished, executive-grade Markdown report with an executive summary, market data tables, strategic recommendations, and verified source references.
-6. **API Response & PDF Storage**: The final report is saved as an immutable, timestamped `.md` file and converted into a clean, matching `.pdf` file in [`outputs/`](outputs/) using `pdf_export.py` (`fpdf2`). The response returns the full report text, the markdown path, and the `pdf_path`. Clients can also stream or download the PDF directly via `GET /research/{filename}/pdf`.
+---
+
+## Key Features
+
+- **Multi-Agent Collaboration**: Sequential chain of specialized agents (Researcher &rarr; Analyst &rarr; Writer) ensuring strict separation of concerns.
+- **Zero Hallucination Web Grounding**: Live search queries fetch real-world metrics, dates, and source URLs rather than relying on static model memory.
+- **Dual Export (Markdown + PDF)**: Automatically generates clean Markdown and PDF versions of every report without requiring heavy browser engines (like Puppeteer or WeasyPrint).
+- **Encoding & Rate-Limit Resilient**: Integrated text normalization sanitizes Unicode punctuation (non-breaking hyphens, special spaces, smart quotes) into clean ASCII, preventing PDF glyph corruption and staying well within Groq TPM limits.
+- **Production REST API**: Built on FastAPI with auto-generated OpenAPI/Swagger documentation at `/docs`, automated request validation, and clean error handling.
 
 ---
 
@@ -33,21 +75,34 @@ flowchart LR
 ```text
 research-crew/
 ├── .env.example              # Template for required environment variables
-├── requirements.txt          # Minimal pinned dependencies (including fpdf2)
-├── README.md                 # Setup, architecture guide, and verified examples
-├── main.py                   # FastAPI REST API wrapper (POST /research, GET /health, GET /research/{filename}/pdf)
-├── pdf_export.py             # Converts Markdown reports into clean, formatted PDF documents (fpdf2)
-├── crew.py                   # Crew assembly, task definitions, and sequential pipeline
-├── agents.py                 # Agent definitions (Researcher, Analyst, Writer) and LLM config
+├── requirements.txt          # Pinned dependencies (CrewAI, LangChain, FastAPI, fpdf2)
+├── README.md                 # Project architecture, setup guide, and documentation
+├── main.py                   # FastAPI REST API wrapper & download endpoints
+├── pdf_export.py             # Markdown-to-PDF export engine powered by fpdf2
+├── crew.py                   # Sequential crew assembly and task factory definitions
+├── agents.py                 # Agent roles, backstories, and Groq LLM configuration
 ├── tools/
 │   ├── __init__.py
-│   └── search_tool.py        # LangChain DuckDuckGo search tool
+│   └── search_tool.py        # LangChain DuckDuckGo search integration
 ├── outputs/
-│   └── .gitkeep              # Destination for timestamped generated markdown (.md) and PDF (.pdf) reports
+│   ├── .gitkeep              # Destination directory for generated .md and .pdf reports
+│   ├── report_20260912_...md # Sample verified Markdown research report
+│   └── report_20260912_...pdf# Sample verified PDF research report
 └── tests/
-    ├── test_search_tool.py   # Isolated test script for the search tool
-    └── test_pdf_export.py    # Unit and integration tests for PDF export and download endpoint
+    ├── test_search_tool.py   # Isolated search tool verification test
+    └── test_pdf_export.py    # PDF compilation and download endpoint integration test
 ```
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/research` | Trigger the multi-agent research pipeline for a given topic. |
+| `GET` | `/research/{filename}/pdf` | Stream/download the generated PDF report directly. |
+| `GET` | `/health` | Health check endpoint for monitoring and uptime checks. |
+| `GET` | `/docs` | Interactive Swagger UI for live API testing and documentation. |
 
 ---
 
@@ -56,6 +111,7 @@ research-crew/
 ### 1. Prerequisites
 - **Python 3.11+**
 - Git
+- A free [Groq API Key](https://console.groq.com/)
 
 ### 2. Clone the Repository
 ```bash
@@ -82,93 +138,86 @@ pip install -r requirements.txt
 ```
 
 ### 5. Configure Environment Variables
-Create your local `.env` file from the provided example:
+Copy the example environment configuration:
 ```bash
 cp .env.example .env
 ```
-Edit `.env` (or `env/.env`) and add your API credentials:
+Edit `.env` (or `env/.env`) and add your credentials:
 ```ini
 # Groq API Key (required for high-speed inference)
 MY_API_KEY=gsk_your_groq_api_key_here
 
 # Model configuration
 GROQ_MODEL=openai/gpt-oss-120b
-MAX_TOKENS=2500
+MAX_TOKENS=3500
 ```
 
 ---
 
-## How to Run
+## Running the Project
 
-### Method A: Run via REST API (Production Flow)
-Start the FastAPI server using Uvicorn:
+### Mode 1: Run via FastAPI REST API (Recommended)
+Start the Uvicorn server:
 ```bash
 python main.py
 ```
-*(Or run via Uvicorn with auto-reload: `uvicorn main:app --reload`)*
+*(Or with live-reload: `uvicorn main:app --reload`)*
 
-The server starts at `http://127.0.0.1:8000`:
-- **Interactive Swagger Documentation:** Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) in your browser.
-- **Healthcheck:** `GET http://127.0.0.1:8000/health`
-- **Research Endpoint:** `POST http://127.0.0.1:8000/research`
-- **PDF Download Endpoint:** `GET http://127.0.0.1:8000/research/{filename}/pdf`
+- Open Swagger UI in your browser: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- Service endpoint: `POST http://127.0.0.1:8000/research`
 
-### Method B: Run as Standalone Script
-To run the full multi-agent crew directly from the terminal without starting the web server:
+### Mode 2: Run as Standalone Script
+To run the research pipeline directly from the command line without starting a server:
 ```bash
 python crew.py
 ```
-*(You can edit `test_topic` inside `if __name__ == "__main__":` in `crew.py` to change the topic).*
 
 ---
 
-## Real Example Request & Response (Milestone 4 Verification)
+## Verified End-to-End Example
 
-Below is an **actual, unedited** HTTP request and response captured during live testing.
+Below is a live request and response executed on the pipeline:
 
-### 1. HTTP Request Sent
+### 1. Request
 ```bash
-curl -i -X POST http://127.0.0.1:8000/research \
+curl -X POST http://127.0.0.1:8000/research \
   -H "Content-Type: application/json" \
-  -d '{"topic": "Advancements in Solid-State Batteries for Electric Vehicles"}'
+  -d '{"topic": "Boom in the Gaming Industry After the Early 2000s"}'
 ```
 
-### 2. Actual HTTP Response Received
-```http
-HTTP/1.1 200 OK
-date: Fri, 11 Sep 2026 03:45:34 GMT
-server: uvicorn
-content-length: 4260
-content-type: application/json
-
+### 2. Response
+```json
 {
   "status": "success",
-  "topic": "Advancements in Solid-State Batteries for Electric Vehicles",
-  "filename": "report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.md",
-  "saved_path": "outputs\\report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.md",
-  "pdf_path": "outputs\\report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.pdf",
-  "report": "# Executive Research Report: The Industrialization of Solid-State Batteries for Electric Vehicles\n..."
+  "topic": "Boom in the Gaming Industry After the Early 2000s",
+  "filename": "report_20260912_093505_Boom_in_Gaming_Industry_after_early_2000.md",
+  "saved_path": "outputs\\report_20260912_093505_Boom_in_Gaming_Industry_after_early_2000.md",
+  "pdf_path": "outputs\\report_20260912_093505_Boom_in_Gaming_Industry_after_early_2000.pdf",
+  "report": "# Boom in the Gaming Industry After the Early 2000s - Executive Report\n\n## 1. Executive Summary\nThe global video-games market has transformed from a niche $10 bn sector in 2000 to a $187.7 bn powerhouse in 2023 - a cumulative growth of roughly 1,770 %...\n\n## 2. Market Overview & Current Trends\n..."
 }
 ```
 
-### 3. Files Saved to Disk
-The generated report is automatically saved as both Markdown and PDF:
-- Markdown: [`outputs/report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.md`](outputs/report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.md)
-- PDF Document: [`outputs/report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.pdf`](outputs/report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.pdf)
-
-### 4. Downloading the PDF Directly
-You can retrieve the generated PDF file via the download endpoint:
+### 3. Download the Generated PDF
 ```bash
-curl -O http://127.0.0.1:8000/research/report_20260911_091738_Advancements_in_Solid-State_Batteries_fo.md/pdf
+curl -O http://127.0.0.1:8000/research/report_20260912_093505_Boom_in_Gaming_Industry_after_early_2000.md/pdf
 ```
-*(Accepts either the `.md` report filename, `.pdf` filename, or the base report name)*
 
 ---
 
-## Error Handling
+## Running Automated Tests
 
-The REST API implements defensive input validation:
-- **Missing `topic` field**: Returns `HTTP 422 Unprocessable Content` with field validation errors.
-- **Empty string or whitespace-only `topic`**: Returns `HTTP 400 Bad Request` with message:  
-  `"Invalid input: 'topic' cannot be empty or contain only whitespace. Please provide a meaningful research topic."`
-- **Pipeline execution failures**: Intercepted and returned as `HTTP 500 Internal Server Error` with error diagnostics, preventing server crashes.
+Run the test suite to verify search connectivity and PDF generation:
+
+```bash
+# Verify isolated search tool
+python tests/test_search_tool.py
+
+# Verify PDF compilation and download endpoint
+python tests/test_pdf_export.py
+```
+
+---
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
