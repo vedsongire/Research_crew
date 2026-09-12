@@ -78,14 +78,15 @@ def create_research_tasks():
         description=(
             "Carefully analyze the raw research notes provided on '{topic}'.\n"
             "Your objectives:\n"
-            "1. Filter out redundant noise and identify the most significant underlying patterns.\n"
+            "1. Filter out redundant noise and distill findings into a concise, high-signal briefing (around 500-800 words).\n"
             "2. Break down findings into categorized thematic pillars (e.g., operational impact, economic ROI, tech hurdles).\n"
             "3. Evaluate the trade-offs: compare the promised benefits against practical implementation challenges.\n"
-            "4. Preserve all relevant statistics, case study details, and source URLs provided by the researcher."
+            "4. Preserve all verified statistics, top case studies, and exact cited source URLs.\n"
+            "Keep the analysis dense, clear, and focused to provide a streamlined briefing for executive writing."
         ),
         expected_output=(
-            "A structured analytical briefing featuring categorized thematic insights, a balanced "
-            "pros/cons evaluation, distilled key metrics, and preserved source URLs."
+            "A concise, structured analytical briefing (500-800 words) featuring categorized thematic insights, "
+            "a balanced pros/cons evaluation, distilled key metrics, and preserved source URLs."
         ),
         agent=analyst,
         context=[t1],
@@ -95,6 +96,7 @@ def create_research_tasks():
         description=(
             "Review the structured analysis and research on '{topic}'.\n"
             "Draft a polished, comprehensive, publication-ready executive report formatted in clean Markdown.\n\n"
+            "Target Length: ~1,000 to 1,500 words. Write concisely and avoid unnecessary verbosity or repetition.\n\n"
             "The report MUST include ALL of the following sections in order without stopping or truncating prematurely:\n"
             "1. Title and Executive Summary (high-level synthesis of findings).\n"
             "2. Market Overview & Current Trends (with specific statistics and structured table).\n"
@@ -104,18 +106,17 @@ def create_research_tasks():
             "6. Future Outlook & Strategic Recommendations (forward-looking roadmap and key takeaways).\n"
             "7. References / Sources Section (explicit list of all cited URLs and reports).\n\n"
             "CRITICAL COMPLETION REQUIREMENT:\n"
-            "- You must pace your writing so that every single section is fully drafted from start to finish.\n"
+            "- You must budget your writing across sections so that every section is fully completed.\n"
             "- Sections 6 (Future Outlook & Strategic Recommendations) and 7 (References / Sources) are MANDATORY "
             "and must never be cut off, abbreviated, or omitted.\n\n"
             "FORMATTING & ENCODING RULES:\n"
             "- Use clean, standard ASCII characters only (standard hyphens '-' for lists and compound words, "
             "standard quotes ' \"', and regular spaces).\n"
-            "- Do NOT use non-breaking hyphens, special unicode minus signs, or narrow/non-breaking spaces that "
-            "corrupt formatting."
+            "- Do NOT use non-breaking hyphens, special unicode minus signs, or narrow/non-breaking spaces."
         ),
         expected_output=(
-            "A complete, fully finished Markdown executive research report containing all 7 numbered sections "
-            "including the Future Outlook and References sections, formatted cleanly with standard ASCII punctuation."
+            "A complete, fully finished Markdown executive research report (approx. 1,000-1,500 words) containing all 7 numbered sections "
+            "including Future Outlook and References, formatted cleanly with standard ASCII punctuation."
         ),
         agent=writer,
         context=[t2],

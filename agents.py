@@ -74,7 +74,7 @@ if api_key:
         model=_resolve_crewai_model(configured_model),
         base_url="https://api.groq.com/openai/v1",
         api_key=api_key.strip(),
-        max_tokens=int(os.getenv("MAX_TOKENS", "5000")),
+        max_tokens=int(os.getenv("MAX_TOKENS", "3500")),
         timeout=120,
     )
 else:
